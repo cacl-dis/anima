@@ -80,6 +80,23 @@ function refreshContextSideband(id) {
 
 // ── Vexil Master feed (proactive cross-session commentary) ──────────────
 const VEXIL_FEED_PATH = '~/.local/share/pixel-terminal/vexil_feed.jsonl';
+
+const _SECRET_PATTERNS = [
+  /sk-ant-[A-Za-z0-9_-]{20,}/g,          // Anthropic API keys
+  /ghp_[A-Za-z0-9]{36,}/g,               // GitHub personal access tokens
+  /github_pat_[A-Za-z0-9_]{20,}/g,       // GitHub fine-grained PATs
+  /AKIA[A-Z0-9]{16}/g,                   // AWS access key IDs
+  /(?<=Bearer\s)\S{16,}/gi,              // Bearer tokens
+  /(?<=(Authorization|Auth):\s*)\S{16,}/gi, // Authorization header values
+  /(?<=(-p|--password|--passwd|--token|--secret|--api-?key)\s)\S+/gi, // CLI flags
+  /[A-Za-z0-9+/]{40,}={0,2}(?=\s|$|")/g, // Long base64 blobs
+];
+function redactSecrets(str) {
+  let out = str;
+  for (const re of _SECRET_PATTERNS) out = out.replace(re, '[REDACTED]');
+  return out;
+}
+
 function appendVexilFeed(entry) {
   const line = JSON.stringify({ ...entry, ts: Date.now() });
   window.__TAURI__?.core?.invoke('append_line_to_file', { path: VEXIL_FEED_PATH, line }).catch(() => {});
@@ -283,7 +300,7 @@ export function handleEvent(id, event) {
               pxLog('TOOL-IN', `id:${id.slice(0,8)} ${b.name} → ${hint.slice(0,80)}`);
               s._workingPhase = hint; updateCursorPhase(hint);
             }
-            appendVexilFeed({ type: 'tool_use', session_id: id.slice(0, 8), tool: b.name, hint: (hint || '').slice(0, 120), file: filePath, cwd: s.cwd });
+            appendVexilFeed({ type: 'tool_use', session_id: id.slice(0, 8), tool: b.name, hint: redactSecrets((hint || '')).slice(0, 120), file: filePath, cwd: s.cwd });
           }
           // Sequential thinking: surface reasoning steps in session log
           if (b.name === 'mcp__sequential-thinking__sequentialthinking') {
@@ -470,7 +487,7 @@ export function handleEvent(id, event) {
             session_id: id.slice(0, 8),
             tool_count: s._turnToolCount,
             turn_text:  (s._turnText || '').slice(-500),
-            user_msg:   (s._lastUserMsg || '').trim().replace(/\n/g, ' ').slice(0, 200),
+            user_msg:   redactSecrets((s._lastUserMsg || '').trim().replace(/\n/g, ' ')).slice(0, 200),
           });
         }
         // Task ledger: capture last assistant output for compaction recovery

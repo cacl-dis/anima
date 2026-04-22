@@ -1,5 +1,7 @@
 use std::fs;
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt;
 
 /// Validate and expand a path for use in IPC file commands.
 /// Expands leading `~/`. Enforces a strict allowlist of paths the app
@@ -173,11 +175,11 @@ pub fn append_line_to_file(path: String, line: String) -> Result<(), String> {
     if let Some(parent) = safe.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&safe)
-        .map_err(|e| e.to_string())?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    #[cfg(unix)]
+    opts.mode(0o600);
+    let mut file = opts.open(&safe).map_err(|e| e.to_string())?;
     writeln!(file, "{}", line).map_err(|e| e.to_string())
 }
 
